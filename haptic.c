@@ -1,5 +1,5 @@
 /*
-	Elecanisms Mini-Project III using a PIC18F
+	Elecanisms Mini-Project IV using a PIC18F
 	
 	Shivam Desai and Asa Eckert-Erdheim
 	September 23, 2013
@@ -42,6 +42,7 @@
 
 #define CURRENT         &A[0] // Current pin
 #define EMF             &A[1] // Back EMF pin
+#define FB              &A[2] // Back EMF pin
 
 // Define names for timers
 #define BLINKY_TIMER		&timer1 // blinky light
@@ -57,6 +58,11 @@ void initChip(void);
 
 uint16_t LOW  = 0;
 uint16_t HIGH = 1;
+
+uint16_t CURRENT_VAL;
+uint16_t EMF_VAL;
+uint16_t FB_VAL;
+uint16_t ENC_COUNT_VAL;
 
 // uint16_t LED_VAL  = 0;
 
@@ -96,6 +102,7 @@ void initChip(){
 
     pin_analogIn(CURRENT);      // configure CURRENT as input
     pin_analogIn(EMF);          // configure EMF as input 
+    pin_analogIn(FB);           // configure EMF as input 
 
 }
 
@@ -103,44 +110,69 @@ void initChip(){
 			Vendor Requests
 **************************************************/
 
-// void VendorRequests(void) {
-//     WORD temp;
+void VendorRequests(void) {
+    WORD temp;
 
-//     switch (USB_setup.bRequest) {
-//         case SET_VALS:
-//             PAN_VAL = USB_setup.wValue.w;
-//             TILT_VAL = USB_setup.wIndex.w;
-//             BD[EP0IN].bytecount = 0;    // set EP0 IN byte count to 0 
-//             BD[EP0IN].status = 0xC8;    // send packet as DATA1, set UOWN bit
-//             break;
-//         case GET_VALS:
-//             temp.w = PAN_VAL;
-//             BD[EP0IN].address[0] = temp.b[0];
-//             BD[EP0IN].address[1] = temp.b[1];
-//             temp.w = TILT_VAL;
-//             BD[EP0IN].address[2] = temp.b[0];
-//             BD[EP0IN].address[3] = temp.b[1];
-//             BD[EP0IN].bytecount = 4;    // set EP0 IN byte count to 4
-//             BD[EP0IN].status = 0xC8;    // send packet as DATA1, set UOWN bit
-//             break;            
-//         default:
-//             USB_error_flags |= 0x01;    // set Request Error Flag
-//     }
-// }
+    switch (USB_setup.bRequest) {
+        // case SET_VALS:
+        //     PAN_VAL = USB_setup.wValue.w;
+        //     TILT_VAL = USB_setup.wIndex.w;
+        //     BD[EP0IN].bytecount = 0;    // set EP0 IN byte count to 0 
+        //     BD[EP0IN].status = 0xC8;    // send packet as DATA1, set UOWN bit
+        //     break;
+        case GET_VALS:
+            temp.w = CURRENT_VAL;
+            BD[EP0IN].address[0] = temp.b[0];
+            BD[EP0IN].address[1] = temp.b[1];
+            temp.w = EMF_VAL;
+            BD[EP0IN].address[2] = temp.b[0];
+            BD[EP0IN].address[3] = temp.b[1];
+            temp.w = FB_VAL;
+            BD[EP0IN].address[4] = temp.b[0];
+            BD[EP0IN].address[5] = temp.b[1];
+            temp.w = ENC_COUNT_VAL;
+            BD[EP0IN].address[6] = temp.b[0];
+            BD[EP0IN].address[7] = temp.b[1];
 
-// void VendorRequestsIn(void) {
-//     switch (USB_request.setup.bRequest) {
-//         default:
-//             USB_error_flags |= 0x01;                    // set Request Error Flag
-//     }
-// }
+            BD[EP0IN].bytecount = 8;    // set EP0 IN byte count to 4
+            BD[EP0IN].status = 0xC8;    // send packet as DATA1, set UOWN bit
+            break;            
+        default:
+            USB_error_flags |= 0x01;    // set Request Error Flag
+    }
+}
 
-// void VendorRequestsOut(void) {
-//     switch (USB_request.setup.bRequest) {
-//         default:
-//             USB_error_flags |= 0x01;                    // set Request Error Flag
-//     }
-// }
+void VendorRequestsIn(void) {
+    switch (USB_request.setup.bRequest) {
+        default:
+            USB_error_flags |= 0x01;                    // set Request Error Flag
+    }
+}
+
+void VendorRequestsOut(void) {
+    switch (USB_request.setup.bRequest) {
+        default:
+            USB_error_flags |= 0x01;                    // set Request Error Flag
+    }
+}
+
+/*************************************************
+            Interrupt Service Routines
+**************************************************/
+
+void encoder_serviceInterrupt() {
+    _INT0IF = LOW;
+    ENC_COUNT_VAL ++;
+}
+
+
+/*************************************************
+            Interrupt Declarations
+**************************************************/
+
+void __attribute__((interrupt, auto_psv)) _INT0Interrupt(void) {
+    encoder_serviceInterrupt();
+}                   
 
 /******************************************************************************/
 /* Main Program                                                               */
@@ -149,6 +181,7 @@ void initChip(){
 int16_t main(void) {
 	
 	initChip();						// initialize the PIC pins etc.
+    InitUSB();                      // initialize the USB registers and serial interface engine
 
     led_on(&led1);					// initial state for BLINKY LIGHT
     timer_setPeriod(BLINKY_TIMER, 1);	// timer for BLINKY LIGHT
@@ -162,12 +195,24 @@ int16_t main(void) {
     pin_write(D1, LOW);
     pin_write(nD2, HIGH);
 
+    while (USB_USWSTAT!=CONFIG_STATE) {     // while the peripheral is not configured...
+        
+        ServiceUSB();                       // ...service USB requests
+        
+    }
+
     while (1) {
+
+        ServiceUSB(); 
 
         if (timer_flag(BLINKY_TIMER)) {	// when the timer trips
             timer_lower(BLINKY_TIMER);
             led_toggle(&led1);			// toggle the BLINKY LIGHT
         }
+
+        CURRENT_VAL = pin_read(CURRENT);
+        EMF_VAL = pin_read(EMF);
+        FB_VAL = pin_read(FB);
         
     }
 }

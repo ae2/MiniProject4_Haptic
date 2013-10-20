@@ -19,6 +19,7 @@ env.Append(BUILDERS = {'List' : list})
 
 env.Program('haptic', ['haptic.c',
                       'descriptors.c',  
+                      'usb.c',
                       '../lib/uart.c',
                       '../lib/timer.c',
                       '../lib/ui.c',
