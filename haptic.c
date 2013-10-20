@@ -48,7 +48,7 @@
 #define BLINKY_TIMER	&timer1 // blinky light
 
 // Define constants
-#define RP20			20 //
+
 
 /***************************************************** 
 		Function Prototypes & Variables
@@ -57,7 +57,7 @@
 void initChip(void);
 void initInt(void);
 
-void __attribute__((interrupt)) _INT1Interrupt(void); 
+void __attribute__((interrupt)) _CNInterrupt(void); 
 
 uint16_t LOW  = 0;
 uint16_t HIGH = 1;
@@ -165,14 +165,10 @@ void VendorRequestsOut(void) {
 
 void initInt(void) {
 
-	_INT1R = RP20;
-
-	IFS1bits.INT1IF = 0; 		// clear the external interrupt 1 flag
-	INTCON2bits.INT1EP = 1;		// external interrupt 1 triggered on negative edge
-	IPC5bits.INT1IP2 = 1; 		// external interrupt 1 has priority 7
-	IPC5bits.INT1IP1 = 1;
-	IPC5bits.INT1IP0 = 1;
-	IEC1bits.INT1IE = 1; 		// external interrupt 1 is enabled
+	// Enable encoder change interrupt
+	CNEN1bits.CN14IE = 1; 	// configure change notification interrupt D[0]
+	IFS1bits.CNIF = 0;		// clear change notification flag D[0]	
+	IEC1bits.CNIE = 1;		// enable notification interrupt D[0]
 
 }
 
@@ -181,8 +177,8 @@ void initInt(void) {
 **************************************************/
 
 void encoder_serviceInterrupt() {
-    _INT1IF = LOW;
     ENC_COUNT_VAL ++;
+    IFS1bits.CNIF = 0;		// clear change notification flag D[0]	
 }
 
 
@@ -190,7 +186,7 @@ void encoder_serviceInterrupt() {
             Interrupt Declarations
 **************************************************/
 
-void __attribute__((interrupt, auto_psv)) _INT1Interrupt(void) {
+void __attribute__((interrupt, auto_psv)) _CNInterrupt(void) {
     encoder_serviceInterrupt();
 }                   
 
@@ -234,6 +230,9 @@ int16_t main(void) {
         CURRENT_VAL = pin_read(CURRENT);
         EMF_VAL = pin_read(EMF);
         FB_VAL = pin_read(FB);
+
+        
+        
         // ENC_COUNT_VAL = pin_read(ENCODER);
         
     }
