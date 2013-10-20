@@ -2,7 +2,7 @@
 	Elecanisms Mini-Project IV using a PIC18F
 	
 	Shivam Desai and Asa Eckert-Erdheim
-	September 23, 2013
+	October 28, 2013
 	
 	Questions? 		   [Shivam@students.olin.edu; Asa@students.olin.edu]
 */
@@ -45,16 +45,19 @@
 #define FB              &A[2] // Back EMF pin
 
 // Define names for timers
-#define BLINKY_TIMER		&timer1 // blinky light
+#define BLINKY_TIMER	&timer1 // blinky light
 
 // Define constants
-// #define interval	20e-3
+#define RP20			20 //
 
 /***************************************************** 
 		Function Prototypes & Variables
 **************************************************** */ 
 
 void initChip(void);
+void initInt(void);
+
+void __attribute__((interrupt)) _INT1Interrupt(void); 
 
 uint16_t LOW  = 0;
 uint16_t HIGH = 1;
@@ -157,11 +160,28 @@ void VendorRequestsOut(void) {
 }
 
 /*************************************************
+            Initialize Interrupts 
+**************************************************/
+
+void initInt(void) {
+
+	_INT1R = RP20;
+
+	IFS1bits.INT1IF = 0; 		// clear the external interrupt 1 flag
+	INTCON2bits.INT1EP = 1;		// external interrupt 1 triggered on negative edge
+	IPC5bits.INT1IP2 = 1; 		// external interrupt 1 has priority 7
+	IPC5bits.INT1IP1 = 1;
+	IPC5bits.INT1IP0 = 1;
+	IEC1bits.INT1IE = 1; 		// external interrupt 1 is enabled
+
+}
+
+/*************************************************
             Interrupt Service Routines
 **************************************************/
 
 void encoder_serviceInterrupt() {
-    _INT0IF = LOW;
+    _INT1IF = LOW;
     ENC_COUNT_VAL ++;
 }
 
@@ -170,7 +190,7 @@ void encoder_serviceInterrupt() {
             Interrupt Declarations
 **************************************************/
 
-void __attribute__((interrupt, auto_psv)) _INT0Interrupt(void) {
+void __attribute__((interrupt, auto_psv)) _INT1Interrupt(void) {
     encoder_serviceInterrupt();
 }                   
 
@@ -182,6 +202,7 @@ int16_t main(void) {
 	
 	initChip();						// initialize the PIC pins etc.
     InitUSB();                      // initialize the USB registers and serial interface engine
+    initInt();						// initialize the interrupt pins
 
     led_on(&led1);					// initial state for BLINKY LIGHT
     timer_setPeriod(BLINKY_TIMER, 1);	// timer for BLINKY LIGHT
@@ -213,6 +234,7 @@ int16_t main(void) {
         CURRENT_VAL = pin_read(CURRENT);
         EMF_VAL = pin_read(EMF);
         FB_VAL = pin_read(FB);
+        // ENC_COUNT_VAL = pin_read(ENCODER);
         
     }
 }
