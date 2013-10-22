@@ -1,0 +1,21 @@
+motor 12190
+	10mOhm, .5A to sense current is bad
+	motor driver provides a mirror .24% of current, 300ohm resistor
+		PWMing a 12V signal
+
+
+sense current while driving
+sense backEMF when floating
+
+
+D[0] is ENC-encoder  connected to RD5/RP20/CN14
+A[0] is CUR-current  connected to AN0/RB0/CN2/RP0/VREF+
+A[1] is EMF-	     connected to AN1/RB1/CN3/RP1/VREF-
+A[2] is FB -feedback connected to AN2/RB2/CN
+	   -load current feedback output provides ground referenced 0.24% of H-Bridge high-side output current (300 ohm res)
+	-- CHANGED TO A 2.4K
+
+33600
+33536
+33664
+

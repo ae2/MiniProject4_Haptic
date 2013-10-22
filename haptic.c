@@ -1,5 +1,5 @@
 /*
-	Elecanisms Mini-Project IV using a PIC18F
+	Elecanisms Mini-Project IV using a PIC24F
 	
 	Shivam Desai and Asa Eckert-Erdheim
 	October 28, 2013
@@ -42,13 +42,15 @@
 
 #define CURRENT         &A[0] // Current pin
 #define EMF             &A[1] // Back EMF pin
-#define FB              &A[2] // Back EMF pin
+#define FB              &A[2] // Load current feedback pin
 
 // Define names for timers
 #define BLINKY_TIMER	&timer1 // blinky light
+#define PWM_TIMER		&timer2 // motor
 
 // Define constants
-
+#define freq		250 // run the motor at 250Hz
+#define duty_init	0
 
 /***************************************************** 
 		Function Prototypes & Variables
@@ -67,6 +69,9 @@ uint16_t EMF_VAL;
 uint16_t FB_VAL;
 uint16_t ENC_COUNT_VAL;
 
+uint16_t DUTY_VAL = 65536*2/5; // 40% duty cycle
+uint16_t EMF_MID = 32768;     // middle point for EMF ADC
+
 // uint16_t LED_VAL  = 0;
 
 // uint16_t DUTY_VAL = 65536/2; // 100% duty cycle
@@ -80,33 +85,62 @@ uint16_t ENC_COUNT_VAL;
 
 
 /*************************************************
-			Initialize the PIC
+			Initialize the PIC24F
 **************************************************/
 
 void initChip(){
 	
     init_clock();
     init_uart();
-    init_pin(); 	// initialize the pins for ULTRASONIC
+    init_pin(); 	// initialize the pins for HAPTIC
     init_ui();		// initialize the user interface for BLINKY LIGHT
     init_timer();	// initialize the timer for BLINKY LIGHT
-    init_oc(); 		// initialize the output compare module for SERVO
+    init_oc(); 		// initialize the output compare module for MOTOR
 
-	pin_digitalIn(ENCODER);     // configure ENCODER as input
-    pin_digitalIn(nSF);         // configure nSF as input
+	pin_digitalIn(ENCODER);     // configure digital inputs
+    pin_digitalIn(nSF);
 
-	pin_digitalOut(nD2);        // configure nD2 as output
-	pin_digitalOut(D1);         // configure D1 as output
-    pin_digitalOut(ENA);        // configure ENA as output
-    pin_digitalOut(IN2);        // configure IN2 as output
-    pin_digitalOut(IN1);        // configure IN1 as output
-    pin_digitalOut(SLEW);       // configure SLEW as output
-    pin_digitalOut(INV);        // configure INC as output
+	pin_digitalOut(nD2);        // configure digital outputs
+	pin_digitalOut(D1);
+    pin_digitalOut(ENA);
+    pin_digitalOut(IN2);
+    pin_digitalOut(IN1);
+    pin_digitalOut(SLEW);
+    pin_digitalOut(INV);
 
-    pin_analogIn(CURRENT);      // configure CURRENT as input
-    pin_analogIn(EMF);          // configure EMF as input 
-    pin_analogIn(FB);           // configure EMF as input 
+    pin_analogIn(CURRENT);      // configure analog inputs
+    pin_analogIn(EMF); 
+    pin_analogIn(FB); 
 
+	oc_pwm  (&oc1, nD2, PWM_TIMER, freq, duty_init);	// configure motor PWM
+
+}
+
+/*************************************************
+            Initialize Interrupts 
+**************************************************/
+
+void initInt(void) {
+
+	// Enable encoder change interrupt
+	CNEN1bits.CN14IE = 1; 	// configure change notification interrupt D[0]
+	IFS1bits.CNIF = 0;		// clear change notification flag D[0]	
+	IEC1bits.CNIE = 1;		// enable notification interrupt D[0]
+
+}
+
+/*************************************************
+            Initialize Motor 
+**************************************************/
+
+void initMotor(void) {
+
+    pin_write(ENA, HIGH);  // Enable motor driver
+    pin_write(SLEW, HIGH); // slew rate is fast
+    pin_write(INV, LOW);   // invert    OFF
+    pin_write(D1, LOW);    // disable D1 OFF
+    pin_write(nD2, HIGH);  // disable D2 OFF
+    
 }
 
 /*************************************************
@@ -160,27 +194,13 @@ void VendorRequestsOut(void) {
 }
 
 /*************************************************
-            Initialize Interrupts 
-**************************************************/
-
-void initInt(void) {
-
-	// Enable encoder change interrupt
-	CNEN1bits.CN14IE = 1; 	// configure change notification interrupt D[0]
-	IFS1bits.CNIF = 0;		// clear change notification flag D[0]	
-	IEC1bits.CNIE = 1;		// enable notification interrupt D[0]
-
-}
-
-/*************************************************
             Interrupt Service Routines
 **************************************************/
 
 void encoder_serviceInterrupt() {
-    ENC_COUNT_VAL ++;
-    IFS1bits.CNIF = 0;		// clear change notification flag D[0]	
+    IFS1bits.CNIF = 0; // clear change notification flag D[0]	
+    ENC_COUNT_VAL ++;  // increment the encoder
 }
-
 
 /*************************************************
             Interrupt Declarations
@@ -199,18 +219,16 @@ int16_t main(void) {
 	initChip();						// initialize the PIC pins etc.
     InitUSB();                      // initialize the USB registers and serial interface engine
     initInt();						// initialize the interrupt pins
+    initMotor();					// initialize the motor pins
 
     led_on(&led1);					// initial state for BLINKY LIGHT
     timer_setPeriod(BLINKY_TIMER, 1);	// timer for BLINKY LIGHT
     timer_start(BLINKY_TIMER);
-
-    pin_write(ENA, HIGH);  // Enable motor driver
-    pin_write(IN1, HIGH);
-    pin_write(IN2, LOW);
-    pin_write(SLEW, HIGH);
-    pin_write(INV, LOW);
-    pin_write(D1, LOW);
-    pin_write(nD2, HIGH);
+	
+	// Motor commands
+    pin_write(IN1, HIGH);  // keep one input high
+    pin_write(IN2, LOW);   // keep one input low
+	pin_write(nD2, DUTY_VAL);  // invert D2 ON using dutycycle
 
     while (USB_USWSTAT!=CONFIG_STATE) {     // while the peripheral is not configured...
         
@@ -226,14 +244,12 @@ int16_t main(void) {
             timer_lower(BLINKY_TIMER);
             led_toggle(&led1);			// toggle the BLINKY LIGHT
         }
-
+			
         CURRENT_VAL = pin_read(CURRENT);
         EMF_VAL = pin_read(EMF);
         FB_VAL = pin_read(FB);
-
         
-        
-        // ENC_COUNT_VAL = pin_read(ENCODER);
+        //ENC_COUNT_VAL = pin_read(ENCODER);
         
     }
 }
