@@ -48,9 +48,19 @@
 #define BLINKY_TIMER	&timer1 // blinky light
 #define PWM_TIMER		&timer2 // motor
 
-// Define constants
-#define freq		250 // run the motor at 250Hz
-#define duty_init	0
+// Define motor constants
+#define freq		  250 // run the motor at 250Hz
+#define duty_init	  0
+
+// Define encoder direction constants
+#define emf_val_l	  32768 // the middle value for EMF_VAL
+#define emf_val_r	  32832 // the chatter value for EMF_VAL
+#define ENC_COUNT_MIN 865   // rails for encoder value
+#define ENC_COUNT_MAX 1138
+
+// Define PID constants
+#define setpoint 1000
+#define kp		 485
 
 /***************************************************** 
 		Function Prototypes & Variables
@@ -67,22 +77,12 @@ uint16_t HIGH = 1;
 uint16_t CURRENT_VAL;
 uint16_t EMF_VAL;
 uint16_t FB_VAL;
-uint16_t ENC_COUNT_VAL;
+uint16_t ENC_COUNT_VAL = 1000;
 
 uint16_t DUTY_VAL = 65536*2/5; // 40% duty cycle
 uint16_t EMF_MID = 32768;     // middle point for EMF ADC
 
-// uint16_t LED_VAL  = 0;
-
-// uint16_t DUTY_VAL = 65536/2; // 100% duty cycle
-
-// uint16_t PULSE_TICK_COUNT = 0;
-// uint16_t OVERFLOW_COUNT = 0;
-
-// uint16_t TOF_VAL = 0;
-
-// uint16_t TIMEOUT_FLAG = 0;
-
+int16_t  error;
 
 /*************************************************
 			Initialize the PIC24F
@@ -144,6 +144,59 @@ void initMotor(void) {
 }
 
 /*************************************************
+            Interrupt Declarations
+**************************************************/
+
+void __attribute__((interrupt, auto_psv)) _CNInterrupt(void) {
+    encoder_serviceInterrupt();
+}                   
+
+/*************************************************
+            Interrupt Service Routines
+**************************************************/
+
+void encoder_serviceInterrupt() {
+    IFS1bits.CNIF = 0; // clear change notification flag D[0]	
+	EMF_VAL = pin_read(EMF);
+	if (EMF_VAL > emf_val_r){
+		ENC_COUNT_VAL ++; // increment the encoder
+	}
+	if (EMF_VAL < emf_val_l){
+		ENC_COUNT_VAL --; // decrement the encoder
+	}
+	if (ENC_COUNT_VAL > ENC_COUNT_MAX){
+		ENC_COUNT_VAL = ENC_COUNT_MAX;
+	}
+	if (ENC_COUNT_VAL < ENC_COUNT_MIN){
+		ENC_COUNT_VAL = ENC_COUNT_MIN;
+	}
+}
+
+/*************************************************
+            PID Control
+**************************************************/
+
+void pid() {
+	
+    error = ENC_COUNT_VAL - setpoint;
+    
+    if (error < 0){
+		//set direction here
+	    pin_write(INV, LOW);   // invert    OFF
+	}
+	else{
+		//set other direction here
+	    pin_write(INV, HIGH);   // invert    ON
+
+	}
+	
+	DUTY_VAL = kp*abs(error);
+	
+	pin_write(nD2, DUTY_VAL);  // disable D2 ON using dutycycle
+
+}
+
+/*************************************************
 			Vendor Requests
 **************************************************/
 
@@ -193,23 +246,6 @@ void VendorRequestsOut(void) {
     }
 }
 
-/*************************************************
-            Interrupt Service Routines
-**************************************************/
-
-void encoder_serviceInterrupt() {
-    IFS1bits.CNIF = 0; // clear change notification flag D[0]	
-    ENC_COUNT_VAL ++;  // increment the encoder
-}
-
-/*************************************************
-            Interrupt Declarations
-**************************************************/
-
-void __attribute__((interrupt, auto_psv)) _CNInterrupt(void) {
-    encoder_serviceInterrupt();
-}                   
-
 /******************************************************************************/
 /* Main Program                                                               */
 /******************************************************************************/
@@ -228,7 +264,6 @@ int16_t main(void) {
 	// Motor commands
     pin_write(IN1, HIGH);  // keep one input high
     pin_write(IN2, LOW);   // keep one input low
-	pin_write(nD2, DUTY_VAL);  // invert D2 ON using dutycycle
 
     while (USB_USWSTAT!=CONFIG_STATE) {     // while the peripheral is not configured...
         
@@ -249,7 +284,7 @@ int16_t main(void) {
         EMF_VAL = pin_read(EMF);
         FB_VAL = pin_read(FB);
         
-        //ENC_COUNT_VAL = pin_read(ENCODER);
-        
+        pid();
+                
     }
 }
